@@ -66,19 +66,28 @@ import { logger } from "@/lib/logger";
  *
  * `manual` é a criação de UMA ficha por vez — o `POST /api/v1/contacts` e a
  * prospecção, que cria o contato e sai conversando com ele na mesma rodada.
- * O MCP não passa por aqui: abre conversa por `openSharedContactConversation`,
- * com a sessão escolhida por quem chama. `importacao_csv` é a planilha, que é o
- * único caminho em que "abrir conversa" acontece centenas de vezes de uma vez.
+ * `importacao_csv` é a planilha, o caminho em que "abrir conversa" aconteceria
+ * centenas de vezes de uma vez. `integracao` é a chave servidor-a-servidor
+ * criando contato por `crm_create_contact`, a planilha sem arquivo. As ferramentas
+ * MCP que CONVERSAM (`crm_start_conversation_and_send`) abrem a conversa por
+ * `openSharedContactConversation`, com a sessão escolhida por quem chama, e não
+ * passam por aqui.
  */
-export type PortaDaCriacao = "manual" | "importacao_csv";
+export type PortaDaCriacao = "manual" | "importacao_csv" | "integracao";
 
 /**
- * A REGRA. Uma linha por porta — mudar o comportamento é mudar aqui, e as duas
+ * A REGRA. Uma linha por porta — mudar o comportamento é mudar aqui, e as
  * portas passam a obedecer sem que nenhum handler seja tocado.
  */
 const ABRE_CONVERSA: Readonly<Record<PortaDaCriacao, boolean>> = {
   manual: true,
   importacao_csv: false,
+  // `integracao` é a chave servidor-a-servidor (`crm_create_contact`, MCP): a
+  // importação sem arquivo, contato a contato. A razão da planilha vale inteira
+  // — conversa aberta por contato frio vira fila sem ninguém do outro lado — e a
+  // integração nem tem quem atenda. Quem quiser conversar abre a conversa depois,
+  // de propósito (`crm_start_conversation_and_send`).
+  integracao: false,
 };
 
 /** A regra crua, para quem a precisa sem efeito (e para o teste medir). */
