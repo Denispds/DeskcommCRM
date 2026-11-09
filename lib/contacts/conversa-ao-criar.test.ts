@@ -174,6 +174,24 @@ describe("porta importacao_csv — não abre, e não custa leitura", () => {
   });
 });
 
+describe("porta integracao — a chave servidor-a-servidor cria contato frio", () => {
+  it("a regra: integração, como a planilha, não abre conversa", () => {
+    expect(abreConversaAoCriar("integracao")).toBe(false);
+  });
+
+  it("contato com telefone e WhatsApp pronto: porta_nao_abre, zero consulta e zero RPC", async () => {
+    const banco = bancoDeMentira([SESSAO_QUE_DISCA]);
+
+    const desfecho = await abrir("integracao", banco);
+
+    // Sabotagem: trocar `integracao: false` por `true` em ABRE_CONVERSA faz este
+    // caso cair — cada contato da lista passaria a abrir conversa (e a fila).
+    expect(desfecho).toEqual({ aberta: false, motivo: "porta_nao_abre" });
+    expect(banco.leituras).toEqual([]);
+    expect(banco.rpcs).toEqual([]);
+  });
+});
+
 describe("porta manual — abre, no canal que alcança o telefone", () => {
   it("sem telefone não abre: a conversa não tem por onde começar", async () => {
     const banco = bancoDeMentira([SESSAO_QUE_DISCA]);

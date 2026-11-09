@@ -13,7 +13,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   listContactsHandler,
   getContactHandler,
+  createContactHandler,
 } from "@/app/api/v1/contacts/_handler";
+import { ApiError } from "@/lib/api/types";
+import { contactCreateSchemaDoPais } from "@/lib/schemas";
+import { perfilDaOrganizacao } from "@/lib/legal/perfil-do-pais";
+import { normalizarTags } from "@/lib/contacts/tag-normalizada";
 import type { McpToolDefinition } from "../types";
 import { CAMPOS_PROPONIVEIS, proporDadoDoContato } from "@/lib/contacts/proposta-de-dado";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -414,5 +419,129 @@ export const crmProposeContactField: McpToolDefinition<typeof propostaShape> = {
       campo: input.campo,
       aguardando: "confirmação de uma pessoa",
     };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// crm_create_contact — a porta de criação para a chave servidor-a-servidor
+// ---------------------------------------------------------------------------
+
+const createContactShape = {
+  name: z.string().min(1).max(200).describe("Nome do contato."),
+  phone_number: z
+    .string()
+    .min(8)
+    .max(32)
+    .describe("Telefone, com DDD: (62) 99999-8888, 62999998888 ou +5562999998888. Sem DDD é recusado."),
+  email: z.string().email().max(254).optional().describe("E-mail do contato (opcional)."),
+  tags: z
+    .array(z.string().min(1).max(60))
+    .max(30)
+    .optional()
+    .describe("Marcadores, ex.: campanha-x, erp-123."),
+  source: z
+    .string()
+    .min(1)
+    .max(60)
+    .optional()
+    .describe("Origem do contato. Padrão: integracao."),
+  merge_tags_if_exists: z
+    .boolean()
+    .default(true)
+    .describe("Telefone já cadastrado: true (padrão) acrescenta as tags ao contato existente; false não mexe nele."),
+};
+
+/**
+ * CRIAR CONTATO POR CHAVE (a porta que faltava).
+ *
+ * Uma integração (ERP, CRM de vendas) lia contatos e criava negócios, mas só a
+ * tela criava o contato — e `crm_create_lead` não cria. A ferramenta usa o MESMO
+ * handler do `POST /api/v1/contacts`, com três diferenças que são o desenho:
+ *
+ *  - a porta é `integracao`: NÃO abre conversa, como a importação de planilha.
+ *    Criar o contato não pode pôr ninguém na Inbox nem a caminho de uma mensagem;
+ *  - é IDEMPOTENTE pelo telefone: telefone que já existe devolve o contato que
+ *    tem, em vez de erro 409 ou de um segundo cadastro (`criado: false`);
+ *  - não aceita custom_fields, cpf nem endereço: a integração traz a lista, e o
+ *    cadastro completo é da tela. Uma porta que escreve pouco se audita melhor.
+ *
+ * A organização vem do token (`ctx.organizationId`), nunca do argumento. Toda
+ * chamada já é auditada pelo servidor MCP (`mcp.tool_called`, com o token).
+ */
+export const crmCreateContact: McpToolDefinition<typeof createContactShape> = {
+  name: "crm_create_contact",
+  description:
+    "Cria um contato (nome, telefone, tags). Idempotente pelo telefone: se já existe, devolve o existente (criado=false). " +
+    "NÃO abre conversa e NÃO envia mensagem. Telefone inválido ou sem DDD volta como motivo=dados_invalidos, sem criar nada.",
+  inputSchema: createContactShape,
+  category: "write",
+  // `manager`, e não `agent`: criar contato em massa é papel de quem opera a
+  // integração, nunca do agente de IA que atende (que fica abaixo — ver
+  // `apenasHumano` no catálogo). Um token sem `role:manager` recebe 403.
+  requiresRole: "manager",
+  requiresScope: "mcp:write",
+  handler: async (input, ctx) => {
+    const perfil = await perfilDaOrganizacao(ctx.supabase, ctx.organizationId);
+    const tags = normalizarTags(input.tags ?? []);
+    const parsed = contactCreateSchemaDoPais(perfil).safeParse({
+      name: input.name,
+      phone_number: input.phone_number,
+      ...(input.email ? { email: input.email } : {}),
+      tags,
+      source: input.source ?? "integracao",
+    });
+    if (!parsed.success) {
+      return {
+        criado: false,
+        motivo: "dados_invalidos",
+        problemas: parsed.error.issues.map((i) => ({ campo: i.path.join("."), mensagem: i.message })),
+      };
+    }
+
+    try {
+      const r = await createContactHandler(
+        ctx.supabase,
+        { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
+        parsed.data,
+        undefined,
+        "integracao",
+      );
+      return { criado: true, contact_id: r.contact.id, conversa_aberta: false };
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.code !== "contact_exists") throw err;
+      const existenteId = typeof err.details?.contact_id === "string" ? err.details.contact_id : null;
+      if (!existenteId) throw err;
+
+      // O contato já existe: o telefone (ou e-mail) pertence a ele. A defesa em
+      // profundidade é a de sempre — o filtro de organização é explícito, o id
+      // veio da releitura do handler e nunca do argumento.
+      let acrescentadas: string[] = [];
+      if (input.merge_tags_if_exists && tags.length > 0) {
+        const { data: atual, error: erroLeitura } = await ctx.supabase
+          .from("contacts")
+          .select("tags")
+          .eq("organization_id", ctx.organizationId)
+          .eq("id", existenteId)
+          .maybeSingle();
+        if (erroLeitura) throw new Error(`contacts: ${erroLeitura.message}`);
+        const jaTem = (atual?.tags as string[] | null) ?? [];
+        acrescentadas = tags.filter((t) => !jaTem.includes(t));
+        if (acrescentadas.length > 0) {
+          const { error: erroEscrita } = await ctx.supabase
+            .from("contacts")
+            .update({ tags: normalizarTags([...jaTem, ...acrescentadas]) })
+            .eq("organization_id", ctx.organizationId)
+            .eq("id", existenteId);
+          if (erroEscrita) throw new Error(`contacts: ${erroEscrita.message}`);
+        }
+      }
+      return {
+        criado: false,
+        motivo: "ja_existe",
+        contact_id: existenteId,
+        tags_acrescentadas: acrescentadas,
+        conversa_aberta: false,
+      };
+    }
   },
 };

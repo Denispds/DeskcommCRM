@@ -66,6 +66,17 @@ export const TOOLS_OPERACAO = declararTools([
     pacotes: ["organizar", "vender"],
   },
   {
+    name: "crm_create_contact",
+    category: "write",
+    rotulo: "Cadastrar contato vindo de outro sistema",
+    explicacao:
+      "Cria um contato (nome, telefone e marcadores) pela chave de uma integração, como o ERP ou outro CRM. Se o telefone já está cadastrado, não cria outro: devolve o que já existe. Não abre conversa e não envia mensagem.",
+    oQueToca: "Cadastro de clientes",
+    risco: "atencao",
+    pacotes: ["organizar"],
+    apenasHumano: true,
+  },
+  {
     name: "crm_create_stage",
     category: "write",
     rotulo: "Criar etapa no funil",
