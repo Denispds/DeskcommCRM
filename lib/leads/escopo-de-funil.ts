@@ -124,6 +124,10 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   crm_find_and_book_appointment: "funil_vem_do_contato",
   crm_reschedule_appointment: "sem_funil",
   crm_cancel_appointment: "sem_funil",
+  // Cria só o CONTATO (chave de integração, MCP): não recebe pipeline, lead nem
+  // etapa e não abre negócio. O funil de quem entra é decisão de quem chama
+  // depois, por `crm_create_lead`, que é a ferramenta escopada.
+  crm_create_contact: "sem_funil",
   // Mesmo argumento das duas acima, e pela mesma razão: operam por
   // `appointment_id` e nunca recebem `lead_id`. Classificá-las
   // `funil_vem_do_lead` seria teatro — o gate procuraria um argumento que não

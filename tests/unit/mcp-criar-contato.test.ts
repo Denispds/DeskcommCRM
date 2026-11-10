@@ -112,7 +112,7 @@ describe("crm_create_contact — criar", () => {
     )) as Record<string, unknown>;
 
     expect(r).toEqual({ criado: true, contact_id: CONTATO, conversa_aberta: false });
-    const [, handlerCtx, input, ligado, porta] = criarMock.mock.calls[0];
+    const [, handlerCtx, input, ligado, porta] = criarMock.mock.calls[0]!;
     expect(handlerCtx.organization_id).toBe(ORG);
     expect(input.phone_number).toBe("+5562999998888");
     expect(input.source).toBe("integracao");
