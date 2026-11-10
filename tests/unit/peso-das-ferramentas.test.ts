@@ -44,7 +44,7 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_search_contacts": { tokens: 135, motivo: BASE },
   "crm_get_contact": { tokens: 188, motivo: BASE },
   "crm_propose_contact_field": { tokens: 438, motivo: BASE },
-  "crm_create_contact": { tokens: 376, motivo: "ferramenta nova (porta de criação de contato por chave de integração), medida na criação (2026-11-09)" },
+  "crm_create_contact": { tokens: 402, motivo: "ferramenta nova (porta de criação de contato por chave de integração); cresceu 26 em 2026-11-10 ao avisar o conflito de e-mail com outro telefone" },
   "crm_list_conversations": { tokens: 283, motivo: BASE },
   "crm_get_conversation": { tokens: 228, motivo: BASE },
   "crm_get_conversation_history": { tokens: 203, motivo: BASE },
@@ -140,7 +140,7 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 
 // 29952 até 2026-11-05; +142 com `ler_documento` (#4133), que só é montada no
 // modo `leitura_direta` — nunca junto de `search_knowledge`.
-const TETO_TOTAL = 30470;
+const TETO_TOTAL = 30496;
 
 const VARIANTE = "schedule_followup (com negócio)";
 
