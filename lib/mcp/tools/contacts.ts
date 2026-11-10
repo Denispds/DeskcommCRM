@@ -472,6 +472,7 @@ export const crmCreateContact: McpToolDefinition<typeof createContactShape> = {
   name: "crm_create_contact",
   description:
     "Cria um contato (nome, telefone, tags). Idempotente pelo telefone: se já existe, devolve o existente (criado=false). " +
+    "Se o conflito for de e-mail com OUTRO telefone, devolve motivo=conflito_de_email e não grava nada. " +
     "NÃO abre conversa e NÃO envia mensagem. Telefone inválido ou sem DDD volta como motivo=dados_invalidos, sem criar nada.",
   inputSchema: createContactShape,
   category: "write",
@@ -516,14 +517,31 @@ export const crmCreateContact: McpToolDefinition<typeof createContactShape> = {
       // profundidade é a de sempre — o filtro de organização é explícito, o id
       // veio da releitura do handler e nunca do argumento.
       let acrescentadas: string[] = [];
+      const { data: atual, error: erroLeitura } = await ctx.supabase
+        .from("contacts")
+        .select("tags, phone_number")
+        .eq("organization_id", ctx.organizationId)
+        .eq("id", existenteId)
+        .maybeSingle();
+      if (erroLeitura) throw new Error(`contacts: ${erroLeitura.message}`);
+
+      // O 409 também dispara por E-MAIL. Se o contato achado tem OUTRO telefone, o
+      // e-mail casou com outra pessoa: devolvê-lo como "já existe" e acrescentar
+      // tags nele marcaria o cliente errado numa lista de campanha. Nada é gravado,
+      // e quem chamou decide (corrigir o e-mail ou cadastrar sem ele).
+      const soDigitos = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+      const telefoneExistente = soDigitos(atual?.phone_number);
+      if (telefoneExistente && telefoneExistente !== soDigitos(parsed.data.phone_number)) {
+        return {
+          criado: false,
+          motivo: "conflito_de_email",
+          contact_id: existenteId,
+          tags_acrescentadas: [],
+          conversa_aberta: false,
+        };
+      }
+
       if (input.merge_tags_if_exists && tags.length > 0) {
-        const { data: atual, error: erroLeitura } = await ctx.supabase
-          .from("contacts")
-          .select("tags")
-          .eq("organization_id", ctx.organizationId)
-          .eq("id", existenteId)
-          .maybeSingle();
-        if (erroLeitura) throw new Error(`contacts: ${erroLeitura.message}`);
         const jaTem = (atual?.tags as string[] | null) ?? [];
         acrescentadas = tags.filter((t) => !jaTem.includes(t));
         if (acrescentadas.length > 0) {

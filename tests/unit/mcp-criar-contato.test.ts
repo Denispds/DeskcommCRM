@@ -51,7 +51,7 @@ interface Chamada {
 }
 
 /** Banco de mentira: guarda cada leitura/escrita e devolve as tags que o contato já tem. */
-function bancoDeMentira(tagsAtuais: string[]) {
+function bancoDeMentira(tagsAtuais: string[], telefoneAtual = "+5562999998888") {
   const chamadas: Chamada[] = [];
   const from = (tabela: string) => {
     const reg: Chamada = { tabela, filtros: [] };
@@ -66,7 +66,7 @@ function bancoDeMentira(tagsAtuais: string[]) {
         reg.filtros.push([coluna, valor]);
         return cadeia;
       },
-      maybeSingle: async () => ({ data: { tags: tagsAtuais }, error: null }),
+      maybeSingle: async () => ({ data: { tags: tagsAtuais, phone_number: telefoneAtual }, error: null }),
       then: (resolve: (v: unknown) => void) => resolve({ data: null, error: null }),
     };
     return cadeia;
@@ -178,7 +178,30 @@ describe("crm_create_contact — idempotência pelo telefone", () => {
     )) as Record<string, unknown>;
 
     expect(r).toMatchObject({ criado: false, motivo: "ja_existe", contact_id: CONTATO, tags_acrescentadas: [] });
-    expect(banco.chamadas).toEqual([]);
+    // Lê o contato (para conferir o telefone), mas não escreve nada.
+    expect(banco.chamadas.some((c) => c.atualizacao)).toBe(false);
+  });
+
+  it("conflito por E-MAIL com contato de OUTRO telefone: não grava tag nenhuma e avisa", async () => {
+    jaExiste();
+    // O contato que o e-mail achou tem outro número: é outra pessoa.
+    const banco = bancoDeMentira(["atacado"], "+5511988887777");
+
+    const r = (await crmCreateContact.handler(
+      {
+        name: "MARIA",
+        phone_number: "62999998888",
+        email: "maria@exemplo.com",
+        tags: ["erp-9"],
+        merge_tags_if_exists: true,
+      },
+      ctx(banco),
+    )) as Record<string, unknown>;
+
+    // Sabotagem: tirar a conferência de telefone em `crmCreateContact` faz este
+    // caso cair — a tag `erp-9` seria gravada no cliente errado.
+    expect(r).toMatchObject({ criado: false, motivo: "conflito_de_email", tags_acrescentadas: [] });
+    expect(banco.chamadas.some((c) => c.atualizacao)).toBe(false);
   });
 
   it("erro que não é de duplicidade continua subindo (não vira sucesso)", async () => {
