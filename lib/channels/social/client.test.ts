@@ -26,4 +26,37 @@ describe("social provider boundary", () => {
       expect.objectContaining({ redirect: "error", cache: "no-store" }),
     );
   });
+  it("carrega o motivo curto do provedor num 409, sem o corpo cru nem campos fora da lista", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              type: "platform_error",
+              code: "ig_window",
+              error: "Fora da janela",
+              token: "tok-secreto",
+            }),
+            { status: 409 },
+          ),
+        ),
+    );
+    const erro = await socialRequest("test-key", "inbox/x/messages", { a: 1 }).catch((e) => e);
+    expect(erro.message).toBe(
+      "O provedor não concluiu a operação (HTTP 409: platform_error · ig_window · Fora da janela).",
+    );
+    expect(erro.message).not.toContain("tok-secreto");
+    expect(erro.upstreamStatus).toBe(409);
+  });
+  it("mantém só o número quando o corpo do erro não é JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("<html>x</html>", { status: 409 })),
+    );
+    await expect(socialRequest("test-key", "p", { a: 1 })).rejects.toThrow(
+      "O provedor não concluiu a operação (HTTP 409).",
+    );
+  });
 });
