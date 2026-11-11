@@ -9,6 +9,32 @@ export class SocialError extends Error {
     super(message);
   }
 }
+/**
+ * O que o provedor disse ao recusar, SEM o corpo cru: só `type`, `code` e `error`
+ * (texto curto), um a um, com caracteres restritos e teto de tamanho. Sem isto um
+ * 409 virava "HTTP 409" e ninguém sabia se era janela, link, permissão ou conta.
+ * Nunca devolve o corpo inteiro nem campo fora dessa lista.
+ */
+async function motivoDoProvedor(response: Response): Promise<string> {
+  try {
+    const json: unknown = await response.json();
+    if (typeof json !== "object" || json === null) return "";
+    const o = json as Record<string, unknown>;
+    const limpo = (v: unknown, max: number) =>
+      typeof v === "string"
+        ? v
+            .replace(/[^\p{L}\p{N} _.:,;()/-]/gu, "")
+            .trim()
+            .slice(0, max)
+        : "";
+    const partes = [limpo(o.type, 40), limpo(o.code, 40), limpo(o.error ?? o.message, 160)].filter(
+      Boolean,
+    );
+    return partes.length ? `: ${partes.join(" · ")}` : "";
+  } catch {
+    return "";
+  }
+}
 /** Fixed provider origin. Credentials never follow a redirect to another host. */
 export async function socialRequest(
   key: string,
@@ -24,14 +50,17 @@ export async function socialRequest(
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  if (!response.ok)
+  if (!response.ok) {
+    const motivo =
+      response.status === 401 || response.status === 403 ? "" : await motivoDoProvedor(response);
     throw new SocialError(
       response.status === 401 || response.status === 403
         ? "Acesso recusado. Confira a chave e as permissões no provedor."
-        : `O provedor não concluiu a operação (HTTP ${response.status}).`,
+        : `O provedor não concluiu a operação (HTTP ${response.status}${motivo}).`,
       response.status === 429 ? 429 : 502,
       response.status,
     );
+  }
   // A DELETE may answer 204 or an empty body; nothing in it is needed.
   return method === "DELETE" ? null : response.json();
 }
