@@ -43,7 +43,9 @@ describe("social provider boundary", () => {
           ),
         ),
     );
-    const erro = await socialRequest("test-key", "inbox/x/messages", { a: 1 }).catch((e) => e);
+    const erro = (await socialRequest("test-key", "inbox/x/messages", { a: 1 }).catch((e: unknown) => e)) as Error & {
+      upstreamStatus?: number;
+    };
     expect(erro.message).toBe(
       "O provedor não concluiu a operação (HTTP 409: platform_error · ig_window · Fora da janela).",
     );
