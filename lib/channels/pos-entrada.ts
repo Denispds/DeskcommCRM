@@ -756,6 +756,7 @@ async function abrirDemanda(admin: Admin, entrada: EntradaDeMensagem): Promise<v
       messageId: entrada.messageId,
       nomeDoContato: entrada.nomeDoContato,
       origem: origemDoNegocioPeloCanal(entrada.canal),
+      channelSessionId: entrada.channelSessionId,
     });
 
     // Os DOIS desfechos viram log. Sem a linha do "não criou", o silêncio de
