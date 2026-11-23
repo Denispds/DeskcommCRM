@@ -3,7 +3,8 @@
  *
  * Streamable HTTP transport via `WebStandardStreamableHTTPServerTransport`
  * (Next.js App Router recebe Web `Request`). Stateless: cada request abre
- * um transport+server fresh. Auth via Bearer (`api_tokens`).
+ * um transport+server fresh. Auth via Bearer (`api_tokens`), lido de
+ * `Authorization` ou, na falta dele, de `x-api-key` (conector do claude.ai).
  *
  * NUNCA logamos plaintext do bearer. Em erro retornamos JSON-RPC 2.0
  * envelope com `error.code` MCP (-32001/-32002/etc).
@@ -15,6 +16,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 
 import { createMcpServer } from "@/lib/mcp/server";
 import { McpAuthError, validateBearerToken } from "@/lib/mcp/auth";
+import { cabecalhoDaChave } from "@/lib/mcp/cabecalho-da-chave";
 import { modulosLigados } from "@/lib/instalacao/modulos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { capacidadesDaOrganizacao } from "@/lib/organizacao/capacidades";
@@ -45,7 +47,7 @@ async function handle(req: NextRequest): Promise<Response> {
   try {
     // Empresa suspensa entra marcada: o servidor só deixa a privacidade
     // responder (LGPD nunca é bloqueada — decisão do dono, 30/09).
-    auth = await validateBearerToken(req.headers.get("authorization"), { permiteOrgSuspensa: true });
+    auth = await validateBearerToken(cabecalhoDaChave(req.headers), { permiteOrgSuspensa: true });
   } catch (err) {
     if (err instanceof McpAuthError) {
       return jsonRpcError(err.mcpCode, err.message, err.httpStatus);
