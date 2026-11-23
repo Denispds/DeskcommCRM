@@ -8,6 +8,65 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.106.0] — 2026-11-23
+
+### ⚠️ Requer atenção
+
+- **O fork Denispds publica e instala as próprias imagens, em ghcr.io/denispds** Antes de atualizar uma VPS para esta versão: confirme que o `origin` do clone aponta para
+  `Denispds/DeskcommCRM` (com `origin` no oficial, o `git pull` traz o `IMG_NS` de volta para
+  `melgarafael`) e que os quatro pacotes do GHCR (`deskcommcrm`, `deskcomm-worker`,
+  `deskcomm-scheduler`, `deskcomm-voice-agent`) estão públicos, ou faça `docker login ghcr.io` na VPS.
+
+### Adicionado
+
+- **Cada número pode escolher o funil onde os contatos novos entram** Em Conexões, o cartão de cada número (WhatsApp, oficial ou rede social com caixa de entrada) ganha o botão **Funil de entrada**. Escolha o funil e, se quiser, a etapa: quem escrever pela primeira vez para aquele número vira negócio ali, e não no funil padrão da empresa. Serve, por exemplo, para o número de atacado alimentar o funil de atacado. Sem escolha, nada muda. Quem já é cliente e as campanhas com funil próprio seguem as regras delas, e se o funil escolhido for arquivado os contatos voltam a entrar no funil padrão. Crédito: @Denispds.
+
+- **Uma integração com chave de API agora consegue cadastrar contatos, sem passar pela tela** Até aqui uma integração (ERP, outro CRM de vendas) com chave `dsk_` conseguia **ler**
+  contatos e **criar negócios**, mas não cadastrar o contato: o `crm_create_lead` só
+  aceita um contato que já exista, e o cadastro só saía pela tela de Contatos ou pela
+  importação de planilha (500 linhas por arquivo, sessão de navegador).
+
+  Nova ferramenta MCP **`crm_create_contact`** (nome, telefone, e-mail opcional, tags):
+
+  - **Idempotente pelo telefone.** Se o número já pertence a um contato da organização,
+    devolve o contato existente (`criado: false`) e acrescenta as tags dadas — nunca
+    cria um segundo. Repetir a chamada não duplica.
+  - **Não abre conversa e não envia mensagem.** O contato nasce frio, como na
+    importação de planilha (nova porta de criação `integracao`, em
+    `lib/contacts/conversa-ao-criar.ts`). Ninguém cai na Inbox por causa de uma lista.
+  - **Telefone inválido ou sem DDD** volta como `motivo: dados_invalidos`, sem criar nada.
+  - **Exige `mcp:write` e papel gerente** (`role:manager` ou `role:admin`). O agente de IA
+    que atende não alcança a ferramenta; um token sem papel recebe 403.
+
+  Nada muda para quem não usa integração: a tela, o `POST /api/v1/contacts` e a
+  importação de planilha se comportam como antes (a ficha criada à mão continua abrindo
+  a conversa). A chave não ganha poder novo sozinha: só quem já tem `mcp:write` e papel
+  de gerente passa a ver a ferramenta.
+
+### Alterado
+
+- **O fork Denispds publica e instala as próprias imagens, em ghcr.io/denispds** Só vale para o fork `Denispds/DeskcommCRM`: o dono da imagem deixa de ser `ghcr.io/melgarafael`
+  e passa a ser `ghcr.io/denispds` (`IMG_NS` em `hostgator-setup-kit/_common.sh`, os quatro
+  defaults de `docker-compose.prod.yml`, o `.env.hostgator.example`, a âncora dos testes e as URLs
+  do repositório no instalador, nos Dockerfiles e em `scripts/cortar-release.ts`).
+
+  Sem isso o `update.sh` regravava `APP_IMAGE` com a imagem do oficial e a instalação nunca
+  recebia o que o fork acrescenta (a primeira é `crm_create_contact`). O `publish-image.yml` já
+  publica em `github.repository_owner`, então o fork constrói em `ghcr.io/denispds/*` sem mudar o
+  workflow.
+
+  Para quem já tem a instalação: nada a editar. O `update.sh` regrava as quatro referências de
+  imagem sozinho. O pré-requisito é de fora do código: o clone da VPS precisa ter `origin` no fork,
+  e os pacotes do GHCR do fork precisam estar públicos.
+
+### Corrigido
+
+- **Quando o provedor recusa o envio numa rede social (Instagram, Facebook), o erro passa a dizer o motivo curto** Uma recusa do provedor (por exemplo HTTP 409) aparecia só como "O provedor não
+  concluiu a operação (HTTP 409)", sem dizer se era janela de resposta, link,
+  permissão ou conta. Agora o erro leva o tipo, o código e o texto curto que o
+  provedor devolveu, com caracteres filtrados e tamanho limitado. O corpo cru da
+  resposta e qualquer outro campo continuam fora do erro.
+
 ## [1.105.0] — 2026-11-10
 
 ### ⚠️ Requer atenção
@@ -14965,7 +15024,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.105.0...HEAD
+[Não lançado]: https://github.com/denispds/DeskcommCRM/compare/v1.106.0...HEAD
+[1.106.0]: https://github.com/denispds/DeskcommCRM/compare/v1.105.0...v1.106.0
 [1.105.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.104.0...v1.105.0
 [1.104.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.103.0...v1.104.0
 [1.103.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.102.0...v1.103.0
